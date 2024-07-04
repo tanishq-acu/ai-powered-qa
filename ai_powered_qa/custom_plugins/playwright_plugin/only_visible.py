@@ -105,6 +105,20 @@ JS_FUNCTIONS = cleandoc(
 class PlaywrightPluginOnlyVisible(PlaywrightPlugin):
     name: str = "PlaywrightPluginOnlyVisible"
 
+    @property
+    def system_message(self) -> str:
+        return cleandoc(
+            """
+            You are an expert QA engineer. Your goal is to execute text scenarios given to you in natural language by controlling a browser.
+            You can see your previous actions, and the user will give you the current state of the browser and the description of the test scenario. Your task is to suggest the next step to take towards completing the test scenario.
+            When making assertions in the scenario, make them as robust as possible. Focus on things that should be stable across multiple runs of the test scenarion.
+            You can use multiple assertions.
+            For example in search results make sure the UI for search results is there, and check for specific keywords in the results that should be stable, but avoid asserting long texts are on the page, word for word.
+            Before executing the test case, make sure to close any cookie consent, promotional or sign-up banners and popups that could be obscuring the elements you want to interact with.
+            Always end the scenario with a call to the "finish" tool.
+            """
+        )
+
     async def _get_page_content(self):
         page = await self._ensure_page()
         if page.url == "about:blank":
@@ -138,57 +152,77 @@ class PlaywrightPluginOnlyVisible(PlaywrightPlugin):
             self._page = await browser_context.new_page()
         return self._page
 
+    # @tool
+    # def scroll(self, selector: str, direction: str):
+    #     """
+    #     Scroll up or down in a selected scroll container
+
+    #     :param str selector: CSS selector for the scroll container
+    #     :param str direction: Direction to scroll in. Either 'up' or 'down'
+    #     """
+    #     return self._run_async(self._scroll(selector, direction))
+
+    # async def _scroll(self, selector: str, direction: str):
+    #     page = await self._ensure_page()
+    #     try:
+    #         # Get viewport dimensions
+    #         window_height = await page.evaluate("window.innerHeight")
+    #         window_width = await page.evaluate("window.innerWidth")
+
+    #         # Get element's bounding box
+    #         bounds = await page.locator(selector).bounding_box()
+    #         if not bounds:
+    #             return f"Unable to scroll in element '{selector}' as it does not exist"
+
+    #         # Calculate the visible part of the element within the viewport
+    #         visible_x = max(
+    #             0,
+    #             min(bounds["x"] + bounds["width"], window_width) - max(bounds["x"], 0),
+    #         )
+    #         visible_y = max(
+    #             0,
+    #             min(bounds["y"] + bounds["height"], window_height)
+    #             - max(bounds["y"], 0),
+    #         )
+
+    #         # Adjust x and y to be within the visible part of the viewport
+    #         x = max(bounds["x"], 0) + visible_x / 2
+    #         y = max(bounds["y"], 0) + visible_y / 2
+
+    #         # Calculate delta based on the visible part of the element
+    #         delta = min(visible_y, window_height) * 0.8
+
+    #         await page.mouse.move(x=x, y=y)
+    #         if direction == "up":
+    #             await page.mouse.wheel(delta_y=-delta, delta_x=0)
+    #         elif direction == "down":
+    #             await page.mouse.wheel(delta_y=delta, delta_x=0)
+    #         else:
+    #             return f"Unable to scroll in element '{selector}' as direction '{direction}' is not supported"
+    #     except Exception as e:
+    #         print(e)
+    #         return f"Unable to scroll. {e}"
+    #     return f"Scrolled successfully."
+
     @tool
-    def scroll(self, selector: str, direction: str):
+    def finish(self, success: bool, comment: str):
         """
-        Scroll up or down in a selected scroll container
+        Finish the current session by closing the browser.
 
-        :param str selector: CSS selector for the scroll container
-        :param str direction: Direction to scroll in. Either 'up' or 'down'
+        :param bool success: Whether the scenario was finished successfully
+        :param str comment: Additional comment about the scenario execution
         """
-        return self._run_async(self._scroll(selector, direction))
+        return self._run_async(self._finish())
 
-    async def _scroll(self, selector: str, direction: str):
-        page = await self._ensure_page()
-        try:
-            # Get viewport dimensions
-            window_height = await page.evaluate("window.innerHeight")
-            window_width = await page.evaluate("window.innerWidth")
-
-            # Get element's bounding box
-            bounds = await page.locator(selector).bounding_box()
-            if not bounds:
-                return f"Unable to scroll in element '{selector}' as it does not exist"
-
-            # Calculate the visible part of the element within the viewport
-            visible_x = max(
-                0,
-                min(bounds["x"] + bounds["width"], window_width) - max(bounds["x"], 0),
-            )
-            visible_y = max(
-                0,
-                min(bounds["y"] + bounds["height"], window_height)
-                - max(bounds["y"], 0),
-            )
-
-            # Adjust x and y to be within the visible part of the viewport
-            x = max(bounds["x"], 0) + visible_x / 2
-            y = max(bounds["y"], 0) + visible_y / 2
-
-            # Calculate delta based on the visible part of the element
-            delta = min(visible_y, window_height) * 0.8
-
-            await page.mouse.move(x=x, y=y)
-            if direction == "up":
-                await page.mouse.wheel(delta_y=-delta, delta_x=0)
-            elif direction == "down":
-                await page.mouse.wheel(delta_y=delta, delta_x=0)
-            else:
-                return f"Unable to scroll in element '{selector}' as direction '{direction}' is not supported"
-        except Exception as e:
-            print(e)
-            return f"Unable to scroll. {e}"
-        return f"Scrolled successfully."
+    async def _finish(self):
+        if self._page:
+            await self._page.close()
+        if self._browser:
+            await self._browser.close()
+        if self._playwright:
+            await self._playwright.stop()
+        self._page = None
+        return "Session finished."
 
     @staticmethod
     def _clean_html(html: str) -> str:

@@ -17,7 +17,7 @@ from .utils import count_tokens, generate_short_id, md5
 
 load_dotenv()
 
-AVAILABLE_MODELS = ["gpt-3.5-turbo-1106", "gpt-4-1106-preview"]
+AVAILABLE_MODELS = ["gpt-3.5-turbo", "gpt-4-turbo", "gpt-4o"]
 
 
 def get_openai_client():
@@ -32,7 +32,7 @@ class Agent(BaseModel, validate_assignment=True, extra="ignore"):
 
     # OpenAI API
     client: Any = Field(default_factory=get_openai_client, exclude=True)
-    model: str = Field(default="gpt-3.5-turbo-1106")
+    model: str = Field(default="gpt-3.5-turbo")
 
     # Agent configuration
     system_message: str = Field(default="You are a helpful assistant.")
@@ -155,10 +155,20 @@ class Agent(BaseModel, validate_assignment=True, extra="ignore"):
     def _get_messages_for_completion(
         self, user_prompt: str | None, model: str, max_tokens: int
     ) -> list[dict]:
-        messages = [{"role": "system", "content": self.system_message}]
+        system_messages = [self.system_message]
+        system_messages.extend([p.system_message for p in self.plugins.values()])
+        system_message = "\n\n".join(
+            [
+                system_message
+                for system_message in system_messages
+                if len(system_message) > 0
+            ]
+        )
+
+        messages = [{"role": "system", "content": system_message}]
         context_message = self._generate_context_message()
 
-        total_tokens = count_tokens(self.system_message, model)
+        total_tokens = count_tokens(system_message, model)
         total_tokens += count_tokens(context_message, model)
         if user_prompt:
             total_tokens += count_tokens(user_prompt, model)

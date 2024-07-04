@@ -12,13 +12,14 @@ streamlit = "^1.28.1"
 python-dotenv = "^1.0.0"
 bs4 = "^0.0.1"
 openai = "^1.2.3"
-tiktoken = "^0.5.1"
+tiktoken = "0.7.0"
 black = "^23.11.0"
 docstring-parser = "^0.15"
 streamlit-image-coordinates = "^0.1.6"
 gradio = "^4.24.0"
 langsmith = "0.1.40"
 anthropic = "0.24.0"
+playwright-stealth = "^1.0.6"
 
 
 [tool.poetry.group.dev.dependencies]

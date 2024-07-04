@@ -8,8 +8,11 @@ from anthropic import Anthropic
 from bs4 import BeautifulSoup
 from openai import OpenAI
 import playwright.async_api
+from playwright.async_api import expect, TimeoutError
 from pydantic import Field
 from langsmith import wrappers, traceable
+from playwright_stealth import stealth_async
+
 
 from ai_powered_qa import config
 from ai_powered_qa.components.plugin import Plugin, tool
@@ -165,11 +168,12 @@ class PlaywrightPlugin(Plugin):
             html = "No page loaded yet."
             description = "The browser is empty"
         else:
+            description = ""
             # anthropic_description = self._get_anthropic_description(html)
             # description = anthropic_description
-            description = self._get_html_description(
-                html, langsmith_extra={"metadata": {"url": self._page.url}}
-            )
+            # description = self._get_html_description(
+            #     html, langsmith_extra={"metadata": {"url": self._page.url}}
+            # )
             # screenshot_description = self._get_screenshot_description(
             #     langsmith_extra={"metadata": {"url": self._page.url}}
             # )
@@ -201,15 +205,15 @@ class PlaywrightPlugin(Plugin):
         return count
 
     @tool
-    def navigate_to_url(self, url: str):
+    def navigate(self, url: str):
         """
-        Navigates to a URL
+        Navigate to a specific URL.
 
-        :param str url: The URL to navigate to.
+        :param str url: The URL you want to navigate to.
         """
-        return self._run_async(self._navigate_to_url(url))
+        return self._run_async(self._navigate(url))
 
-    async def _navigate_to_url(self, url: str):
+    async def _navigate(self, url: str):
         page = await self._ensure_page()
         try:
             response = await page.goto(url, wait_until="domcontentloaded")
@@ -221,15 +225,15 @@ class PlaywrightPlugin(Plugin):
         return f"Navigating to {url} returned status code {status}"
 
     @tool
-    def click_element(self, selector: str) -> str:
+    def click(self, selector: str) -> str:
         """
-        Click on an element with the given CSS selector.
+        Click on an element
 
-        :param str selector: CSS selector for the element to click. Be as specific as possible with the selector to ensure only one item is clicked.
+        :param str selector: Playwright selector used to pick the element you want to click.
         """
-        return self._run_async(self._click_element(selector))
+        return self._run_async(self._click(selector))
 
-    async def _click_element(self, selector: str) -> str:
+    async def _click(self, selector: str) -> str:
         timeout = config.PLAYWRIGHT_TIMEOUT
         page = await self._ensure_page()
         try:
@@ -258,17 +262,17 @@ class PlaywrightPlugin(Plugin):
         return f"Element clicked successfully."
 
     @tool
-    def fill_element(self, selector: str, text: str):
+    def fill_text(self, selector: str, text: str):
         """
-        Fill a text input element with a specific text
+        Insert text into an input element.
 
-        :param str selector: Selector for the input element you want to fill in.
-        :param str text: Text you want to fill in.
+        :param str selector: The selector for the element you want to input the text into.
+        :param str text: The text value you want to input.
         """
 
-        return self._run_async(self._fill_element(selector, text))
+        return self._run_async(self._fill_text(selector, text))
 
-    async def _fill_element(self, selector: str, text: str):
+    async def _fill_text(self, selector: str, text: str):
         page = await self._ensure_page()
         try:
             await page.locator(self._enhance_selector(selector)).fill(
@@ -279,90 +283,60 @@ class PlaywrightPlugin(Plugin):
             return f"Unable to fill element. {e}"
         return f"Text input was successfully performed."
 
+    # @tool
+    # def select_option(self, selector: str, value: str):
+    #     """
+    #     Select an option from a dropdown element identified by its text content.
+
+    #     :param str selector: Selector for the element identified by its text content.
+    #     :param str value: Text content of the option to select.
+    #     """
+    #     return self._run_async(self._select_option(selector, value))
+
+    # async def _select_option(self, selector: str, value: str):
+    #     page = await self._ensure_page()
+    #     try:
+    #         await page.locator(selector).first.select_option(value)
+    #     except Exception:
+    #         return f"Unable to select option '{value}' on element '{selector}'."
+    #     return f"Option '{value}' was successfully selected."
+
+    # @tool
+    # def press_enter(self):
+    #     """
+    #     Press the Enter key. This can be useful for submitting forms that
+    #     don't have a submit button.
+    #     """
+    #     return self._run_async(self._press_enter())
+
+    # async def _press_enter(self):
+    #     page = await self._ensure_page()
+    #     try:
+    #         await page.keyboard.press("Enter")
+    #     except Exception as e:
+    #         print(e)
+    #         return f"Unable to press Enter. {e}"
+    #     return "Enter key was successfully pressed."
+
     @tool
-    def select_option(self, selector: str, value: str):
+    def assert_text(self, text: str, selector: str):
         """
-        Select an option from a dropdown element identified by its text content.
+        Assert that a text is on the page or in a specified element.
 
-        :param str selector: Selector for the element identified by its text content.
-        :param str value: Text content of the option to select.
+        :param str text: Text that should be on the page.
+        :param str selector: Selector for an element that should contain the text. If not provided, the whole page is considered.
         """
-        return self._run_async(self._select_option(selector, value))
+        return self._run_async(self._assert_text(text, selector))
 
-    async def _select_option(self, selector: str, value: str):
+    async def _assert_text(self, text: str, selector: str = "html"):
         page = await self._ensure_page()
         try:
-            await page.locator(selector).first.select_option(value)
-        except Exception:
-            return f"Unable to select option '{value}' on element '{selector}'."
-        return f"Option '{value}' was successfully selected."
-
-    @tool
-    def press_enter(self):
-        """
-        Press the Enter key. This can be useful for submitting forms that
-        don't have a submit button.
-        """
-        return self._run_async(self._press_enter())
-
-    async def _press_enter(self):
-        page = await self._ensure_page()
-        try:
-            await page.keyboard.press("Enter")
+            await expect(page.locator(selector)).to_contain_text(text)
         except Exception as e:
             print(e)
-            return f"Unable to press Enter. {e}"
-        return "Enter key was successfully pressed."
+            return f"Unable to validate the assertion. {e}"
 
-    @tool
-    def assert_that(self, selector: str, action: str, value: str | None = None):
-        """
-        {
-            "type": "function",
-            "function": {
-                "name": "assert_that",
-                "description": "Perform an assertion on an element based on its text content",
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "selector": {
-                            "type": "string",
-                            "description": "Playwright-compatible selector for the element to test"
-                        },
-                        "action": {
-                            "type": "string",
-                            "description": "The assertion action to perform on the element",
-                            "enum": ["is_visible", "contain_text"]
-                        },
-                        "value": {
-                            "type": "string",
-                            "description": "Value to compare to the element's text content"
-                        }
-                    },
-                    "required": ["selector", "action"]
-                }
-            }
-        }
-        """
-        return self._run_async(self._assert_that(selector, action, value))
-
-    async def _assert_that(self, selector: str, action: str, value: str | None = None):
-        page = await self._ensure_page()
-        if action == "is_visible":
-            visible = await page.locator(selector).first.is_visible()
-            result_message = f"{selector} is {'not ' if not visible else ''}visible."
-        elif action == "contain_text":
-            text = await page.inner_text(selector)
-            if text == "":
-                text = await page.locator(selector).first.get_attribute("value")
-            contain_string = "contains" if value == text else "does not contain"
-            result_message = (
-                f"{selector} {contain_string} {value}', ",
-                f"actual value: '{text}'.",
-            )
-        else:
-            return "Action not implemented"
-        return f"Action '{action}' was successfully performed: {result_message}"
+        return f"Successfully validated the assertion."
 
     def close(self):
         self._run_async(self._close())
@@ -436,10 +410,13 @@ class PlaywrightPlugin(Plugin):
     def _get_screenshot_description(self):
         base64_screenshot = base64.b64encode(self._buffer).decode("utf-8")
         completion = self.client.chat.completions.create(
-            model="gpt-4-vision-preview",
+            model="gpt-4o",
             temperature=config.TEMPERATURE_DEFAULT,
             messages=[
-                {"role": "system", "content": "Describe the screenshot"},
+                {
+                    "role": "system",
+                    "content": "Describe the screenshot. Focus specifically on popups, modals and other elements obscuring the main content.",
+                },
                 {
                     "role": "user",
                     "content": [
@@ -462,6 +439,7 @@ class PlaywrightPlugin(Plugin):
             self._browser = await self._playwright.chromium.launch(headless=False)
             browser_context = await self._browser.new_context()
             self._page = await browser_context.new_page()
+            self.page = await stealth_async(self._page)
         return self._page
 
     async def _screenshot(self):
