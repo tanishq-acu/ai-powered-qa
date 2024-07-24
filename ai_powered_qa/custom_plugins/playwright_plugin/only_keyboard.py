@@ -248,7 +248,7 @@ class PlaywrightPluginOnlyKeyboard(PlaywrightPlugin):
     async def _ensure_page(self) -> playwright.async_api.Page:
         if not self._pages:
             self._playwright = await playwright.async_api.async_playwright().start()
-            self._browser = await self._playwright.chromium.launch(headless=False)
+            self._browser = await self._playwright.firefox.launch(headless=False)
             self._browser_context = await self._browser.new_context(ignore_https_errors=True)
             await self._browser_context.add_init_script(JS_FUNCTIONS)
             page = await self._browser_context.new_page()
